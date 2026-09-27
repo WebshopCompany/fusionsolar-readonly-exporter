@@ -49,9 +49,7 @@ def _base_responses(login_responses):
         "auth.pubkey": [FakeResponse({"enableEncrypt": True, "timeStamp": "123"})],
         "auth.login-v3": login_responses,
         "auth.session-redirect": [
-            FakeResponse(
-                headers={"Location": "https://region01eu5.fusionsolar.huawei.com/home"}
-            )
+            FakeResponse(headers={"Location": "https://region01eu5.fusionsolar.huawei.com/home"})
         ],
         "session.keepalive": [FakeResponse()],
         "topology.company": [FakeResponse({"data": {"moDn": "synthetic-company"}})],
@@ -89,9 +87,7 @@ def test_encrypted_login_redirect_path_succeeds(monkeypatch, tmp_path):
 def test_wrong_credentials_fail_without_exposing_secret(monkeypatch, tmp_path):
     _patch_encryption(monkeypatch)
     transport = FakeTransport(
-        _base_responses(
-            [FakeResponse({"errorCode": "401", "errorMsg": "invalid credentials"})]
-        )
+        _base_responses([FakeResponse({"errorCode": "401", "errorMsg": "invalid credentials"})])
     )
     auth = AuthenticatedSession(
         transport,
