@@ -2,7 +2,15 @@
 
 A local, owner-authorised exporter for **read-only** Huawei FusionSolar web/frontend telemetry. It is not Huawei's official Northbound/OpenAPI interface and it contains no plant-control capability.
 
-## Quick start
+## Stage-1 validation (no history)
+
+For the owner-runnable compatibility check, use the supported **Stage-1 validator**.
+It validates the browser host, authenticates locally, discovers plants/devices, and performs at most
+one current/realtime read. It does **not** request historical telemetry or start a backfill.
+
+See [`QUICKSTART.md`](QUICKSTART.md) for Windows, macOS and Linux setup and the exact safe-to-share diagnostics.
+
+## Full historical export
 
 Install [uv](https://docs.astral.sh/uv/), then:
 

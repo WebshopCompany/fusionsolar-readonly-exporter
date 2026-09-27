@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 fusionsolar-export = "fusionsolar_readonly_exporter.cli:main"
+fusionsolar-stage1 = "fusionsolar_readonly_exporter.stage1:main"
 
 [dependency-groups]
 dev = [
