@@ -120,7 +120,9 @@ class AuthenticatedSession:
         try:
             target_host = normalize_host(discovered or self.login_host)
         except ValueError as exc:
-            raise AuthenticationError("FusionSolar session redirect targeted an invalid host") from exc
+            raise AuthenticationError(
+                "FusionSolar session redirect targeted an invalid host"
+            ) from exc
         response = self.transport.request(
             "GET",
             f"https://{target_host}{redirect_path}",
@@ -227,7 +229,9 @@ class AuthenticatedSession:
                 body = self._json_object(response, purpose)
                 regions = body.get("respMultiRegionName") or []
                 if regions is not None and not isinstance(regions, list):
-                    raise AuthenticationError("FusionSolar returned malformed multi-region metadata")
+                    raise AuthenticationError(
+                        "FusionSolar returned malformed multi-region metadata"
+                    )
                 redirect_value = None
                 if isinstance(regions, list) and len(regions) > 1:
                     redirect_value = str(regions[1])
