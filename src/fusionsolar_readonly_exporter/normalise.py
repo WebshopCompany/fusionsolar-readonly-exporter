@@ -8,7 +8,6 @@ from .signals import COMMUNITY_LABELS, semantic_status
 from .timeutil import local_iso_from_epoch_ms, local_naive_series_to_utc
 
 
-
 def _raw_value(value: Any) -> str | None:
     if value is None:
         return None
