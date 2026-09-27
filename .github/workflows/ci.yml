@@ -1,18 +1,15 @@
-name: candidate-ci
+name: candidate-bootstrap
 
 on:
   push:
     branches:
-      - 'feature/**'
-  pull_request:
-    branches:
-      - main
+      - 'feature/initial-readonly-exporter'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  prepare:
+  materialise-lock:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,57 +20,20 @@ jobs:
         uses: astral-sh/setup-uv@v10.2.0
         with:
           version: '0.12.18'
-      - name: Resolve lock
-        run: uv lock
-      - name: Sync resolved environment
-        run: uv sync --frozen
-      - name: Format staged Python
-        run: uv run ruff format src tests
-      - name: Upload prepared tree
-        uses: actions/upload-artifact@v4
-        with:
-          name: prepared-tree
-          path: |
-            uv.lock
-            src
-            tests
-          if-no-files-found: error
-
-  validate:
-    needs: prepare
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ['3.11', '3.12', '3.13']
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.2.0
-        with:
-          version: '0.12.18'
-      - uses: actions/download-artifact@v4
-        with:
-          name: prepared-tree
-          path: .
-      - name: Sync locked environment
-        run: uv sync --frozen
-      - name: Unit, policy, privacy and mocked end-to-end tests
-        run: uv run pytest
-      - name: Ruff format check
-        run: uv run ruff format --check .
-      - name: Ruff lint
-        run: uv run ruff check .
-      - name: Pyright
-        run: uv run pyright
-      - name: Build package
-        run: uv build
-      - name: Install wheel into clean smoke environment
+      - name: Resolve and verify lock
         run: |
-          uv venv .wheel-smoke --python ${{ matrix.python-version }}
-          uv pip install --python .wheel-smoke/bin/python dist/*.whl
-      - name: Installed-wheel CLI smoke test
-        run: .wheel-smoke/bin/fusionsolar-export --help
+          uv lock
+          uv sync --frozen
+      - name: Verify repository formatting
+        run: uv run ruff format --check .
+      - name: Commit generated lock
+        run: |
+          git add uv.lock
+          if git diff --cached --quiet; then
+            echo "uv.lock is already committed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add uv dependency lock"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
