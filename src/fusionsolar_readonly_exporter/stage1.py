@@ -14,6 +14,7 @@ from .errors import ExporterError, HostDiscoveryRequired
 from .readonly_transport import ReadOnlyTransport
 
 _SAFE_CLASS_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_SAFE_PHASE_RE = re.compile(r"^[a-z0-9-]+$")
 
 
 def _host_pattern_class(host: str) -> str:
@@ -55,6 +56,11 @@ def _error_class(exc: BaseException) -> str:
     return name if _SAFE_CLASS_RE.fullmatch(name) else "Error"
 
 
+def _auth_phase(auth: AuthenticatedSession | None) -> str:
+    value = getattr(auth, "auth_phase", "unknown") if auth is not None else "unknown"
+    return value if isinstance(value, str) and _SAFE_PHASE_RE.fullmatch(value) else "unknown"
+
+
 def _http_status_class(exc: BaseException) -> str:
     current: BaseException | None = exc
     for _ in range(3):
@@ -88,6 +94,7 @@ def run_stage1(
     username: str,
     password: str,
     *,
+    session_cookie: str | None = None,
     work_dir: Path = Path(".stage1-private"),
     request_delay: float = 0.25,
     connect_timeout: float = 5.0,
@@ -106,6 +113,8 @@ def run_stage1(
     except (ValueError, HostDiscoveryRequired) as exc:
         output("HOST_VALIDATION: FAIL")
         output("AUTHENTICATION: NOT_ATTEMPTED")
+        output("AUTH_METHOD: NONE")
+        output("AUTH_PHASE: host-validation")
         output(f"ERROR_CLASS: {_error_class(exc)}")
         output("HTTP_STATUS_CLASS: NONE")
         _emit_safety_footer(
@@ -114,8 +123,11 @@ def run_stage1(
         return 3
 
     output("HOST_VALIDATION: PASS")
-    if not username or not password:
+    use_session_cookie = bool(session_cookie)
+    output(f"AUTH_METHOD: {'BROWSER_SESSION' if use_session_cookie else 'PASSWORD'}")
+    if not use_session_cookie and (not username or not password):
         output("AUTHENTICATION: NOT_ATTEMPTED")
+        output("AUTH_PHASE: local-input")
         output("ERROR_CLASS: MissingLocalCredentials")
         output("HTTP_STATUS_CLASS: NONE")
         _emit_safety_footer(
@@ -155,9 +167,13 @@ def run_stage1(
             captcha_provider=captcha_provider,
             work_dir=work_dir,
         )
-        auth.login()
+        if use_session_cookie:
+            auth.restore_session_cookie(session_cookie or "")
+        else:
+            auth.login()
         session_established = True
         output("AUTHENTICATION: PASS")
+        output(f"AUTH_PHASE: {_auth_phase(auth)}")
 
         client = FusionSolarReadClient(auth)
         plants = client.plants()
@@ -212,6 +228,7 @@ def run_stage1(
         return 0
     except ExporterError as exc:
         output("AUTHENTICATION: FAIL" if not session_established else "STAGE1_OPERATION: FAIL")
+        output(f"AUTH_PHASE: {_auth_phase(auth)}")
         output(f"ERROR_CLASS: {_error_class(exc)}")
         output(f"HTTP_STATUS_CLASS: {_http_status_class(exc)}")
         _emit_safety_footer(
@@ -223,6 +240,7 @@ def run_stage1(
         return 1
     except Exception as exc:
         output("AUTHENTICATION: FAIL" if not session_established else "STAGE1_OPERATION: FAIL")
+        output(f"AUTH_PHASE: {_auth_phase(auth)}")
         output(f"ERROR_CLASS: {_error_class(exc)}")
         output(f"HTTP_STATUS_CLASS: {_http_status_class(exc)}")
         _emit_safety_footer(
@@ -238,6 +256,7 @@ def run_stage1(
             auth.password = ""
         username = ""
         password = ""
+        session_cookie = ""
 
 
 def parser() -> argparse.ArgumentParser:
@@ -245,6 +264,11 @@ def parser() -> argparse.ArgumentParser:
         description="Read-only FusionSolar Stage-1 compatibility validator (no history/backfill)"
     )
     p.add_argument("--host", help="FusionSolar browser host or URL; prompted locally if omitted")
+    p.add_argument(
+        "--use-browser-session",
+        action="store_true",
+        help="prompt locally for an existing dp-session cookie instead of username/password",
+    )
     p.add_argument("--work-dir", type=Path, default=Path(".stage1-private"))
     p.add_argument(
         "--request-delay",
@@ -287,13 +311,20 @@ def main(argv: list[str] | None = None) -> int:
             max_retries=args.max_retries,
         )
 
-    username = input("FusionSolar username: ").strip()
-    password = getpass.getpass("FusionSolar password: ")
+    username = ""
+    password = ""
+    session_cookie = ""
+    if args.use_browser_session:
+        session_cookie = getpass.getpass("FusionSolar dp-session cookie (hidden input): ")
+    else:
+        username = input("FusionSolar username: ").strip()
+        password = getpass.getpass("FusionSolar password: ")
     try:
         return run_stage1(
             normalized_host,
             username,
             password,
+            session_cookie=session_cookie or None,
             work_dir=args.work_dir,
             request_delay=args.request_delay,
             connect_timeout=args.connect_timeout,
@@ -303,3 +334,4 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         username = ""
         password = ""
+        session_cookie = ""
