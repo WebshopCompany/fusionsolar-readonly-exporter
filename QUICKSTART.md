@@ -64,6 +64,28 @@ Copy the browser URL or hostname from the signed-in owner's FusionSolar browser 
 
 If a CAPTCHA is required, the image exists only in the local private Stage-1 work directory for the authentication attempt and is deleted by the authentication handler.
 
+### Existing browser-session fallback
+
+Try the normal username/password Stage-1 first. If password authentication is blocked but the owner
+is already signed in successfully in a browser, Stage-1 can validate an existing `dp-session` cookie
+without persisting it:
+
+macOS / Linux:
+
+```sh
+./run.sh --use-browser-session
+```
+
+Windows PowerShell:
+
+```powershell
+.\run.ps1 --use-browser-session
+```
+
+The cookie is entered through a hidden local prompt. Do not put it on the command line, save it in a
+file, paste it into an AI/chat session, or send it to the maintainer. The fallback still performs only
+Stage-1 operations and still reports `HISTORICAL_REQUESTS: 0` and `BACKFILL_STARTED: NO`.
+
 ## Safe diagnostics to share
 
 The following Stage-1 output is designed to be safe to share for diagnosis:

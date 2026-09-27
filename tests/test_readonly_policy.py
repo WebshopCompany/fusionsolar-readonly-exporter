@@ -86,6 +86,44 @@ def test_extra_body_key_is_denied():
         )
 
 
+def test_unexpected_request_header_is_denied():
+    with pytest.raises(ReadOnlyPolicyViolation):
+        ReadOnlyTransport.assert_allowed(
+            "POST",
+            "https://eu5.fusionsolar.huawei.com/unisso/v3/validateUser.action",
+            "auth.login-v3",
+            params={"timeStamp": "1", "nonce": "n"},
+            json_body={
+                "organizationName": "",
+                "username": "synthetic",
+                "password": "synthetic",
+                "multiRegionName": "",
+            },
+            headers={"Cookie": "must-not-be-injected"},
+        )
+
+
+def test_browser_aligned_auth_headers_are_allowlisted():
+    ReadOnlyTransport.assert_allowed(
+        "POST",
+        "https://eu5.fusionsolar.huawei.com/unisso/v3/validateUser.action",
+        "auth.login-v3",
+        params={"timeStamp": "1", "nonce": "n", "service": "/unisess/v1/auth"},
+        json_body={
+            "organizationName": "",
+            "username": "synthetic",
+            "password": "synthetic",
+            "multiRegionName": "",
+        },
+        headers={
+            "Accept": "application/json",
+            "Origin": "https://eu5.fusionsolar.huawei.com",
+            "Referer": "https://eu5.fusionsolar.huawei.com/unisso/login.action",
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    )
+
+
 def test_non_huawei_host_is_denied():
     with pytest.raises(ReadOnlyPolicyViolation):
         ReadOnlyTransport.assert_allowed(

@@ -33,6 +33,11 @@ FusionSolar password: ********
 
 The username is whatever FusionSolar accepts; it is **not assumed to be an email address**.
 
+If normal password authentication is blocked but the owner already has a valid signed-in browser
+session, both Stage-1 and the normal exporter support `--use-browser-session`. That mode prompts
+locally, with hidden input, for the existing `dp-session` cookie and never persists it. Do not place
+session cookies on the command line, in source files, in Git, or in support messages.
+
 The first successful run probes the account's observed history and performs a backfill from the oldest observed boundary. Empty periods, API failures and a probable retention boundary remain distinct in the coverage report. Later runs re-fetch a deterministic overlap and resume incomplete per-resource/per-day work safely. Use `uv run fusionsolar-export --full` to deliberately rebuild from the oldest observed history.
 
 If FusionSolar requires a CAPTCHA, the image is saved locally outside the export ZIP and the program asks you to type the code. The file is deleted after the attempt.

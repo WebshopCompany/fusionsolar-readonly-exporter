@@ -27,6 +27,9 @@ _FORBIDDEN_FRAGMENTS = (
     "change-config",
     "power-limit",
 )
+_ALLOWED_REQUEST_HEADER_KEYS = frozenset(
+    {"Accept", "Content-Type", "Origin", "Referer", "X-Requested-With"}
+)
 _TRANSIENT_STATUS = frozenset({429, 500, 502, 503, 504})
 _RETRYABLE_POST_PURPOSES = frozenset({"topology.plants", "alarms.current"})
 
@@ -56,14 +59,14 @@ RULES: tuple[Rule, ...] = (
         "/unisso/v2/validateUser.action",
         "auth.login-v2",
         frozenset({"decision", "service"}),
-        frozenset({"organizationName", "username", "password", "verifycode"}),
+        frozenset({"organizationName", "username", "password", "verifycode", "multiRegionName"}),
     ),
     Rule(
         "POST",
         "/unisso/v3/validateUser.action",
         "auth.login-v3",
         frozenset({"timeStamp", "nonce", "service"}),
-        frozenset({"organizationName", "username", "password", "verifycode"}),
+        frozenset({"organizationName", "username", "password", "verifycode", "multiRegionName"}),
     ),
     Rule("GET", "/unisess/v1/auth", "auth.session-redirect", frozenset({"service"})),
     Rule("GET", "/rest/dpcloud/auth/v1/is-session-alive", "session.check"),
@@ -212,6 +215,7 @@ class ReadOnlyTransport:
         params=None,
         json_body=None,
         data=None,
+        headers=None,
     ) -> Rule:
         parsed = urlparse(url)
         method = method.upper()
@@ -231,6 +235,7 @@ class ReadOnlyTransport:
         _safe_subset(params, rule.query_keys, "query")
         _safe_subset(json_body, rule.json_keys, "json")
         _safe_subset(data, rule.form_keys, "form")
+        _safe_subset(headers, _ALLOWED_REQUEST_HEADER_KEYS, "header")
         return rule
 
     @staticmethod
@@ -254,6 +259,7 @@ class ReadOnlyTransport:
         params=None,
         json_body=None,
         data=None,
+        headers=None,
         capture: bool = True,
         timeout: tuple[float, float] | None = None,
     ) -> requests.Response:
@@ -264,6 +270,7 @@ class ReadOnlyTransport:
             params=params,
             json_body=json_body,
             data=data,
+            headers=headers,
         )
         timeout_value = timeout or (self.connect_timeout, self.read_timeout)
         self.last_response_sha256 = None
@@ -279,6 +286,7 @@ class ReadOnlyTransport:
                     params=params,
                     json=json_body,
                     data=data,
+                    headers=headers,
                     timeout=timeout_value,
                     allow_redirects=False,
                 )

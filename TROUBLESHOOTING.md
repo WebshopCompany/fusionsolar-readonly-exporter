@@ -9,7 +9,12 @@ Run the unmodified exporter first and keep diagnostics sanitised.
 3. If safe host discovery cannot validate the account region, pass `--host` using the FusionSolar hostname visible in the browser.
 4. If a CAPTCHA is requested, solve the locally saved image. Do not upload the image, credentials or session material.
 5. Re-run with the default request delay before changing rate settings.
-6. Inspect only sanitised exception types, HTTP status classes, endpoint purposes and validation summaries.
+6. Note the sanitised `AUTH_PHASE` field. It identifies whether failure occurred during login-page,
+   pubkey, credential-submit, session-redirect, session-validation or company-discovery.
+7. If normal password authentication is still blocked but the owner has a working signed-in browser
+   session, use `--use-browser-session` and enter only the `dp-session` value through the hidden
+   local prompt. Never pass that cookie on the command line or send it to support.
+8. Inspect only sanitised exception types, HTTP status classes, endpoint purposes and validation summaries.
 
 ## Data handling
 

@@ -9,7 +9,10 @@ charging-policy, or device-setting endpoints. In particular,
 `/rest/pvms/web/device/v1/deviceExt/set-config-signals` is forbidden.
 
 Credentials are entered locally at runtime, kept only in process memory, never logged, never placed
-in manifests, and never persisted by this project. Cookies/tokens are not persisted. Session expiry
+in manifests, and never persisted by this project. The optional existing-browser-session mode prompts
+for only the owner's `dp-session` value using hidden input; it is kept in process/session memory only,
+is never accepted as a command-line value, and is never persisted or included in output. Cookies/tokens
+are not persisted. Session expiry
 fails closed and requires local re-authentication before the active run resumes. Export bundles contain
 telemetry and identifiers and are private; `output/`, `state/`, `raw/`, `normalised/`,
 `derived/`, and `validation/` are Git-ignored. On POSIX systems private runtime directories are
