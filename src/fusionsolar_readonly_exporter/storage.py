@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import secrets
+import shutil
 import zipfile
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
@@ -33,6 +34,36 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _chmod_best_effort(path: Path, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except (OSError, NotImplementedError):
+        pass
+
+
+def _secure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    _chmod_best_effort(path, 0o700)
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError(f"{path.name} must contain a JSON object")
+    return value
+
+
+def _write_json_private(path: Path, value: dict[str, Any]) -> None:
+    _secure_dir(path.parent)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(value, indent=2, sort_keys=True), encoding="utf-8")
+    _chmod_best_effort(tmp, 0o600)
+    tmp.replace(path)
+    _chmod_best_effort(path, 0o600)
+
+
 def _redact(value: Any) -> Any:
     if isinstance(value, dict):
         return {
@@ -51,12 +82,54 @@ class RunStore:
 
     @classmethod
     def create(cls, output_root: Path, state_root: Path) -> "RunStore":
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ%f")
-        root = output_root / f"fusionsolar-export-{stamp}"
-        for name in ("raw", "normalised", "derived", "validation"):
-            (root / name).mkdir(parents=True, exist_ok=True)
-        state_root.mkdir(parents=True, exist_ok=True)
-        return cls(root=root, state_root=state_root)
+        output_root = output_root.expanduser()
+        state_root = state_root.expanduser()
+        _secure_dir(output_root)
+        _secure_dir(state_root)
+
+        state_path = state_root / "state.json"
+        state = _read_json_object(state_path)
+        root: Path | None = None
+        active = state.get("active_run_root")
+        if isinstance(active, str) and active:
+            try:
+                candidate = Path(active).expanduser().resolve()
+                candidate.relative_to(output_root.resolve())
+            except (OSError, ValueError):
+                candidate = None
+            if candidate is not None and candidate.is_dir():
+                root = candidate
+
+        if root is None:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ%f")
+            root = output_root / f"fusionsolar-export-{stamp}"
+            state["active_run_root"] = str(root.resolve())
+            state["resource_days"] = {}
+            _write_json_private(state_path, state)
+
+        for path in (
+            root,
+            root / "raw",
+            root / "normalised",
+            root / "derived",
+            root / "validation",
+            root / ".checkpoints",
+        ):
+            _secure_dir(path)
+
+        raw_index: list[dict[str, Any]] = []
+        index_path = root / "raw" / "index.jsonl"
+        if index_path.exists():
+            for line in index_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(item, dict):
+                    raw_index.append(item)
+        return cls(root=root, state_root=state_root, raw_index=raw_index)
 
     def record_exchange(
         self, *, method: str, url: str, purpose: str, params, json_body, data, response
@@ -77,6 +150,7 @@ class RunStore:
             extension = ".body"
         body_path = self.root / "raw" / f"{stem}{extension}"
         body_path.write_bytes(content)
+        _chmod_best_effort(body_path, 0o600)
         parsed = urlparse(url)
         envelope = {
             "captured_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -93,26 +167,19 @@ class RunStore:
         }
         env_path = self.root / "raw" / f"{stem}.envelope.json"
         env_path.write_text(json.dumps(envelope, indent=2, sort_keys=True), encoding="utf-8")
+        _chmod_best_effort(env_path, 0o600)
         self.raw_index.append(envelope)
-        with (self.root / "raw" / "index.jsonl").open("a", encoding="utf-8") as handle:
+        index_path = self.root / "raw" / "index.jsonl"
+        with index_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(envelope, sort_keys=True) + "\n")
+        _chmod_best_effort(index_path, 0o600)
         return raw_hash
 
     def state(self) -> dict[str, Any]:
-        path = self.state_root / "state.json"
-        if path.exists():
-            value = json.loads(path.read_text(encoding="utf-8"))
-            if not isinstance(value, dict):
-                raise ValueError("state.json must contain a JSON object")
-            return value
-        return {}
+        return _read_json_object(self.state_root / "state.json")
 
     def save_state(self, state: dict[str, Any]) -> None:
-        path = self.state_root / "state.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-        os.chmod(tmp, 0o600)
-        tmp.replace(path)
+        _write_json_private(self.state_root / "state.json", state)
 
     def pseudonym(self, raw_id: str) -> str:
         state = self.state()
@@ -148,6 +215,41 @@ class RunStore:
             days.sort()
             self.save_state(state)
 
+    def _checkpoint_path(self, resource_key: str, day: date) -> Path:
+        digest = hashlib.sha256(resource_key.encode("utf-8")).hexdigest()
+        return self.root / ".checkpoints" / f"{digest}_{day.isoformat()}.json"
+
+    def save_resource_day_checkpoint(
+        self, resource_key: str, day: date, payload: dict[str, Any]
+    ) -> None:
+        path = self._checkpoint_path(resource_key, day)
+        _write_json_private(
+            path,
+            {"resource": resource_key, "day": day.isoformat(), "payload": payload},
+        )
+
+    def load_resource_day_checkpoint(
+        self, resource_key: str, day: date
+    ) -> dict[str, Any] | None:
+        path = self._checkpoint_path(resource_key, day)
+        if not path.exists():
+            return None
+        value = _read_json_object(path)
+        if value.get("resource") != resource_key or value.get("day") != day.isoformat():
+            return None
+        payload = value.get("payload")
+        return payload if isinstance(payload, dict) else None
+
+    def has_resource_day_checkpoint(self, resource_key: str, day: date) -> bool:
+        return self.load_resource_day_checkpoint(resource_key, day) is not None
+
+    def finish_active_run(self) -> None:
+        state = self.state()
+        state.pop("active_run_root", None)
+        state["resource_days"] = {}
+        self.save_state(state)
+        shutil.rmtree(self.root / ".checkpoints", ignore_errors=True)
+
     def write_table(self, relative_stem: str, rows: list[dict[str, Any]]) -> tuple[Path, Path]:
         try:
             import pyarrow as pa
@@ -157,7 +259,7 @@ class RunStore:
 
         csv_path = self.root / f"{relative_stem}.csv"
         pq_path = self.root / f"{relative_stem}.parquet"
-        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        _secure_dir(csv_path.parent)
         if rows:
             columns = sorted({k for row in rows for k in row.keys()})
             with csv_path.open("w", newline="", encoding="utf-8") as handle:
@@ -168,15 +270,20 @@ class RunStore:
         else:
             csv_path.write_text("", encoding="utf-8")
             pq.write_table(pa.table({"empty": pa.array([], type=pa.string())}), pq_path)
+        _chmod_best_effort(csv_path, 0o600)
+        _chmod_best_effort(pq_path, 0o600)
         return csv_path, pq_path
 
     def manifest(self, extra: dict[str, Any]) -> dict[str, Any]:
         files = []
         for path in sorted(self.root.rglob("*")):
+            relative = path.relative_to(self.root)
+            if ".checkpoints" in relative.parts:
+                continue
             if path.is_file() and path.name != "manifest.json" and not path.name.endswith(".zip"):
                 files.append(
                     {
-                        "path": str(path.relative_to(self.root)),
+                        "path": str(relative),
                         "size": path.stat().st_size,
                         "sha256": sha256_bytes(path.read_bytes()),
                     }
@@ -190,15 +297,28 @@ class RunStore:
             "files": files,
             **extra,
         }
-        (self.root / "manifest.json").write_text(
-            json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
-        )
+        manifest_path = self.root / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+        _chmod_best_effort(manifest_path, 0o600)
         return manifest
 
+    def secure_tree(self) -> None:
+        _chmod_best_effort(self.root, 0o700)
+        for path in self.root.rglob("*"):
+            if path.is_dir():
+                _chmod_best_effort(path, 0o700)
+            elif path.is_file():
+                _chmod_best_effort(path, 0o600)
+
     def package_zip(self) -> Path:
+        self.secure_tree()
         zip_path = self.root.with_suffix(".zip")
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(self.root.rglob("*")):
+                relative = path.relative_to(self.root)
+                if ".checkpoints" in relative.parts:
+                    continue
                 if path.is_file():
-                    archive.write(path, arcname=str(path.relative_to(self.root)))
+                    archive.write(path, arcname=str(relative))
+        _chmod_best_effort(zip_path, 0o600)
         return zip_path

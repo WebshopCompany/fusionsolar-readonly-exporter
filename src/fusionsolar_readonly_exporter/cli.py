@@ -90,7 +90,8 @@ def main(argv: list[str] | None = None) -> int:
         print("Authenticating...")
         auth.login()
         client = FusionSolarReadClient(auth)
-        Exporter(client, store, full=args.full, overlap_days=args.overlap_days).run()
+        archive = Exporter(client, store, full=args.full, overlap_days=args.overlap_days).run()
+        print(f"Export complete. Private ZIP: {archive}")
         return 0
     except HostDiscoveryRequired as exc:
         print(str(exc))

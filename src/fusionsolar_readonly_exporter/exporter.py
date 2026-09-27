@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
 from .client import FusionSolarReadClient
-from .errors import ApiResponseError, AuthenticationError, ReadOnlyPolicyViolation
+from .errors import ApiResponseError, AuthenticationError, ExporterError, ReadOnlyPolicyViolation
 from .normalise import history_rows, plant_balance_rows, realtime_rows
 from .signals import BATTERY_HISTORY_SIGNALS, INVERTER_HISTORY_SIGNALS, module_signal_ids
 from .state import refresh_from_for_run, start_for_run
@@ -186,9 +186,13 @@ def discover_earliest(
 def resource_day_needed(
     store: RunStore, resource: str, day: date, refresh_from: date | None
 ) -> bool:
-    if refresh_from is not None and day >= refresh_from:
-        return True
-    return not store.resource_day_complete(resource, day)
+    # A durable checkpoint is stronger evidence than a completion flag and is safe to reuse
+    # only inside the same active run workspace.
+    _ = refresh_from
+    return not (
+        store.resource_day_complete(resource, day)
+        and store.has_resource_day_checkpoint(resource, day)
+    )
 
 
 def _failure_outcome(exc: Exception) -> str:
@@ -495,7 +499,18 @@ class Exporter:
                     continue
                 resource = f"plant:{pseudo}"
                 if not resource_day_needed(self.store, resource, day, refresh_from):
-                    self._record_coverage(resource, day, [], "resumed_skip_completed")
+                    cached = self.store.load_resource_day_checkpoint(resource, day) or {}
+                    cached_telemetry = cached.get("telemetry", [])
+                    cached_aggregates = cached.get("aggregates", [])
+                    if not isinstance(cached_telemetry, list):
+                        cached_telemetry = []
+                    if not isinstance(cached_aggregates, list):
+                        cached_aggregates = []
+                    self.telemetry.extend(cached_telemetry)
+                    self.aggregates.extend(cached_aggregates)
+                    self._record_coverage(
+                        resource, day, cached_telemetry, "resumed_from_checkpoint"
+                    )
                     continue
                 try:
                     raw = self.client.plant_balance(plant_dn, day)
@@ -507,6 +522,11 @@ class Exporter:
                     )
                     self.telemetry.extend(telemetry)
                     self.aggregates.extend(aggregates)
+                    self.store.save_resource_day_checkpoint(
+                        resource,
+                        day,
+                        {"telemetry": telemetry, "aggregates": aggregates},
+                    )
                     self.store.mark_resource_day_complete(resource, day)
                     self._record_coverage(
                         resource,
@@ -526,7 +546,12 @@ class Exporter:
                     continue
                 resource = f"history:{pseudo}"
                 if not resource_day_needed(self.store, resource, day, refresh_from):
-                    self._record_coverage(resource, day, [], "resumed_skip_completed")
+                    cached = self.store.load_resource_day_checkpoint(resource, day) or {}
+                    cached_rows = cached.get("telemetry", [])
+                    if not isinstance(cached_rows, list):
+                        cached_rows = []
+                    self.telemetry.extend(cached_rows)
+                    self._record_coverage(resource, day, cached_rows, "resumed_from_checkpoint")
                     continue
                 try:
                     raw = self.client.history(device_dn, signal_ids, day)
@@ -538,6 +563,11 @@ class Exporter:
                         raw_sha256=self.client.t.last_response_sha256,
                     )
                     self.telemetry.extend(rows)
+                    self.store.save_resource_day_checkpoint(
+                        resource,
+                        day,
+                        {"telemetry": rows},
+                    )
                     self.store.mark_resource_day_complete(resource, day)
                     self._record_coverage(
                         resource,
@@ -688,14 +718,21 @@ class Exporter:
         )
         archive = self.store.package_zip()
 
-        if not watermark_blocked and completed_through is not None:
-            final_state = self.store.state()
+        if watermark_blocked:
+            raise ExporterError(
+                f"Export incomplete; a partial private package was written to {archive}. "
+                "Re-run the same command to authenticate locally and resume the active export."
+            )
+
+        final_state = self.store.state()
+        if completed_through is not None:
             previous_text = final_state.get("last_successful_day")
             previous = date.fromisoformat(str(previous_text)) if previous_text else None
             if previous is None or completed_through > previous:
                 final_state["last_successful_day"] = completed_through.isoformat()
-            final_state["last_data_host"] = self.client.host
-            self.store.save_state(final_state)
+        final_state["last_data_host"] = self.client.host
+        self.store.save_state(final_state)
+        self.store.finish_active_run()
         return archive
 
     def _deduplicate(self) -> None:

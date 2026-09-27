@@ -20,3 +20,7 @@ class UnsupportedRegion(HostDiscoveryRequired):
 
 class ApiResponseError(ExporterError):
     """A permitted endpoint returned a response that could not be parsed safely."""
+
+
+class SessionExpired(AuthenticationError):
+    """The authenticated web session expired and must be renewed locally."""

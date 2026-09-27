@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Callable
@@ -96,6 +97,10 @@ class AuthenticatedSession:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         path = self.work_dir / "captcha.png"
         path.write_bytes(image)
+        try:
+            os.chmod(path, 0o600)
+        except (OSError, NotImplementedError):
+            pass
         try:
             code = self.captcha_provider(path).strip()
             if not code:

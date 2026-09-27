@@ -1,6 +1,7 @@
 import requests
 import pytest
 
+from fusionsolar_readonly_exporter.errors import SessionExpired
 from fusionsolar_readonly_exporter.readonly_transport import ReadOnlyTransport
 
 
@@ -109,6 +110,26 @@ def test_login_post_is_not_automatically_retried():
             "auth.login-v3",
             params={"timeStamp": "1", "nonce": "n"},
             json_body={"organizationName": "", "username": "u", "password": "p"},
+            capture=False,
+        )
+    assert len(calls) == 1
+
+
+
+def test_unauthorised_data_request_stops_without_retry_for_safe_resume():
+    transport = ReadOnlyTransport(delay_seconds=0, max_retries=3, sleep=lambda _seconds: None)
+    calls = []
+
+    def request(*args, **kwargs):
+        calls.append(1)
+        return FakeResponse(401)
+
+    transport.session.request = request
+    with pytest.raises(SessionExpired, match="resume"):
+        transport.request(
+            "GET",
+            "https://region01eu5.fusionsolar.huawei.com/rest/dpcloud/auth/v1/keep-alive",
+            "session.keepalive",
             capture=False,
         )
     assert len(calls) == 1

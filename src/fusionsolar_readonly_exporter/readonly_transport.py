@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .errors import ApiResponseError, ReadOnlyPolicyViolation
+from .errors import ApiResponseError, ReadOnlyPolicyViolation, SessionExpired
 
 _ALLOWED_HOST_SUFFIX = ".fusionsolar.huawei.com"
 _FORBIDDEN_FRAGMENTS = (
@@ -294,6 +294,12 @@ class ReadOnlyTransport:
                 raise ReadOnlyPolicyViolation(
                     "automatic HTTP redirects are disabled; redirected requests must be "
                     "explicitly re-authorised"
+                )
+
+            if response.status_code in {401, 403} and not purpose.startswith("auth."):
+                raise SessionExpired(
+                    "FusionSolar session is no longer authorised. Re-run the same command "
+                    "to authenticate locally and resume the active export."
                 )
 
             if (
