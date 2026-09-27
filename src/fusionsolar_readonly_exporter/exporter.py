@@ -317,9 +317,7 @@ class Exporter:
             days = set()
             for row in rows:
                 try:
-                    days.add(
-                        datetime.fromisoformat(str(row["timestamp_local"])).date().isoformat()
-                    )
+                    days.add(datetime.fromisoformat(str(row["timestamp_local"])).date().isoformat())
                 except (KeyError, TypeError, ValueError):
                     continue
             signals.append(
@@ -581,9 +579,7 @@ class Exporter:
             )
             try:
                 alarms = self.client.alarms(device_dn)
-                self._finding(
-                    pseudo, "alarms.current", "available" if alarms else "empty_no_data"
-                )
+                self._finding(pseudo, "alarms.current", "available" if alarms else "empty_no_data")
                 (self.store.root / "validation" / f"alarms_{pseudo}.json").write_text(
                     json.dumps(alarms, indent=2), encoding="utf-8"
                 )
@@ -622,9 +618,9 @@ class Exporter:
                         self._diagnostic_rows(
                             pseudo,
                             f"battery.module.{module}",
-                            lambda dn=device_dn, m=module, ids=signal_ids: self.client.battery_module(
-                                dn, m, ids
-                            ),
+                            lambda dn=device_dn,
+                            m=module,
+                            ids=signal_ids: self.client.battery_module(dn, m, ids),
                             lambda payload, m=module: realtime_rows(
                                 payload,
                                 device_pseudonym=pseudo,
