@@ -55,11 +55,7 @@ class ScriptedTransport:
 
     def post_json(self, url, purpose, **kwargs):
         if purpose == "topology.plants":
-            return {
-                "data": {
-                    "list": [{"dn": "plant-synthetic", "name": "Synthetic plant"}]
-                }
-            }
+            return {"data": {"list": [{"dn": "plant-synthetic", "name": "Synthetic plant"}]}}
         if purpose == "alarms.current":
             return {"data": []}
         raise AssertionError(f"unexpected POST JSON: {purpose}")
@@ -104,8 +100,7 @@ class ScriptedTransport:
             if day < EARLIEST:
                 return {"data": {signal: {"data": []} for signal in signal_ids}}
             stamp = int(
-                datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp()
-                * 1000
+                datetime(day.year, day.month, day.day, tzinfo=timezone.utc).timestamp() * 1000
             )
             return {
                 "data": {
@@ -181,15 +176,11 @@ def test_whole_mocked_run_and_incremental_rerun(monkeypatch, tmp_path):
     assert first_store.state()["last_successful_day"] == TODAY.isoformat()
     assert first_store.state()["resource_days"]
 
-    coverage = json.loads(
-        (first_store.root / "validation" / "coverage.json").read_text()
-    )
+    coverage = json.loads((first_store.root / "validation" / "coverage.json").read_text())
     assert coverage["requested_range"]["start"] == EARLIEST.isoformat()
     assert coverage["per_signal"]
 
-    capabilities = json.loads(
-        (first_store.root / "validation" / "capabilities.json").read_text()
-    )
+    capabilities = json.loads((first_store.root / "validation" / "capabilities.json").read_text())
     assert any(item["outcome"] == "available" for item in capabilities["findings"])
 
     with zipfile.ZipFile(first_zip) as archive:
@@ -208,8 +199,6 @@ def test_whole_mocked_run_and_incremental_rerun(monkeypatch, tmp_path):
         progress=lambda _message: None,
     ).run()
     assert second_zip.exists()
-    second_coverage = json.loads(
-        (second_store.root / "validation" / "coverage.json").read_text()
-    )
+    second_coverage = json.loads((second_store.root / "validation" / "coverage.json").read_text())
     assert second_coverage["requested_range"]["start"] == date(2026, 1, 2).isoformat()
     assert second_store.state()["last_successful_day"] == TODAY.isoformat()
