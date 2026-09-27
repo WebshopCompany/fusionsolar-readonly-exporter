@@ -8,7 +8,7 @@ import os
 import secrets
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -51,7 +51,7 @@ class RunStore:
 
     @classmethod
     def create(cls, output_root: Path, state_root: Path) -> "RunStore":
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ%f")
         root = output_root / f"fusionsolar-export-{stamp}"
         for name in ("raw", "normalised", "derived", "validation"):
             (root / name).mkdir(parents=True, exist_ok=True)
@@ -101,7 +101,10 @@ class RunStore:
     def state(self) -> dict[str, Any]:
         path = self.state_root / "state.json"
         if path.exists():
-            return json.loads(path.read_text(encoding="utf-8"))
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError("state.json must contain a JSON object")
+            return value
         return {}
 
     def save_state(self, state: dict[str, Any]) -> None:
@@ -118,8 +121,32 @@ class RunStore:
             salt_hex = secrets.token_hex(32)
             state["pseudonym_salt"] = salt_hex
             self.save_state(state)
-        digest = hmac.new(bytes.fromhex(salt_hex), raw_id.encode(), hashlib.sha256).hexdigest()
+        digest = hmac.new(bytes.fromhex(str(salt_hex)), raw_id.encode(), hashlib.sha256).hexdigest()
         return "dev-" + digest[:16]
+
+    def resource_day_complete(self, resource_key: str, day: date) -> bool:
+        state = self.state()
+        completed = state.get("resource_days", {})
+        if not isinstance(completed, dict):
+            return False
+        days = completed.get(resource_key, [])
+        return day.isoformat() in days if isinstance(days, list) else False
+
+    def mark_resource_day_complete(self, resource_key: str, day: date) -> None:
+        state = self.state()
+        completed = state.setdefault("resource_days", {})
+        if not isinstance(completed, dict):
+            completed = {}
+            state["resource_days"] = completed
+        days = completed.setdefault(resource_key, [])
+        if not isinstance(days, list):
+            days = []
+            completed[resource_key] = days
+        value = day.isoformat()
+        if value not in days:
+            days.append(value)
+            days.sort()
+            self.save_state(state)
 
     def write_table(self, relative_stem: str, rows: list[dict[str, Any]]) -> tuple[Path, Path]:
         try:
