@@ -320,7 +320,11 @@ class AuthenticatedSession:
                 message = last_error or f"error code {last_error_code}"
                 raise AuthenticationError(f"FusionSolar login failed: {message}")
             break
-        raise AuthenticationError("FusionSolar login response did not establish a session")
+
+        # Legacy/non-redirect flows can establish the session directly during credential
+        # submission. Validate that session explicitly rather than assuming redirect metadata.
+        self._validate_data_host()
+        self._clear_credentials()
 
     def _clear_credentials(self) -> None:
         self.username = ""
