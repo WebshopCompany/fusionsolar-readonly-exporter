@@ -5,10 +5,13 @@ from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
 
-from .errors import AuthenticationError, HostDiscoveryRequired
+from .errors import AuthenticationError, HostDiscoveryRequired, UnsupportedRegion
 from .readonly_transport import ReadOnlyTransport
 
 HOST_RE = re.compile(r"^[a-z0-9-]+\.fusionsolar\.huawei\.com$")
+_REGION_DATA_RE = re.compile(r"^region\d{2}([a-z][a-z0-9-]*)$")
+_UNI_DATA_RE = re.compile(r"^uni\d{3}([a-z][a-z0-9-]*)$")
+_UNSUPPORTED_LOGIN_LABELS = frozenset({"la5", "intl"})
 
 
 def normalize_host(value: str) -> str:
@@ -22,12 +25,21 @@ def normalize_host(value: str) -> str:
 
 
 def _login_host_for(data_host: str) -> str:
-    label = data_host.split(".", 1)[0]
-    if label.startswith("region") and len(label) > 8:
-        label = label[8:]
-    elif label.startswith("uni") and len(label) > 6:
-        label = label[6:]
-    return f"{label}.fusionsolar.huawei.com"
+    host = normalize_host(data_host)
+    label = host.split(".", 1)[0]
+    match = _REGION_DATA_RE.fullmatch(label) or _UNI_DATA_RE.fullmatch(label)
+    if not match:
+        raise UnsupportedRegion(
+            "Unsupported FusionSolar browser host pattern. Use the region... or supported uni... "
+            "hostname shown by the signed-in browser."
+        )
+    login_label = match.group(1)
+    if login_label in _UNSUPPORTED_LOGIN_LABELS:
+        raise UnsupportedRegion(
+            f"FusionSolar login region '{login_label}' uses an unsupported SSO flow; "
+            "no credentials were sent."
+        )
+    return f"{login_label}.fusionsolar.huawei.com"
 
 
 def _host_from_multi_region(value: str) -> tuple[str | None, str, dict[str, str]]:
@@ -38,8 +50,12 @@ def _host_from_multi_region(value: str) -> tuple[str | None, str, dict[str, str]
     return parsed.hostname or service_host, parsed.path, query
 
 
-def _eu5_service_value() -> str:
+def _service_value() -> str:
     return "/unisess/v1/auth?service=%2Fnetecowebext%2Fhome%2Findex.html"
+
+
+def _eu5_service_value() -> str:
+    return _service_value()
 
 
 class AuthenticatedSession:
@@ -48,16 +64,18 @@ class AuthenticatedSession:
         transport: ReadOnlyTransport,
         username: str,
         password: str,
-        data_host: str | None = None,
+        data_host: str,
         captcha_provider: Callable[[Path], str] | None = None,
         work_dir: Path | None = None,
     ):
+        if not data_host:
+            raise HostDiscoveryRequired(
+                "A FusionSolar browser host is required before credentials can be sent."
+            )
         self.transport = transport
         self.username = username
         self.password = password
-        self.data_host = (
-            normalize_host(data_host) if data_host else "region01eu5.fusionsolar.huawei.com"
-        )
+        self.data_host = normalize_host(data_host)
         self.login_host = _login_host_for(self.data_host)
         self.captcha_provider = captcha_provider
         self.work_dir = work_dir or Path.cwd()
@@ -75,6 +93,7 @@ class AuthenticatedSession:
             params={"timestamp": __import__("time").time_ns() // 1_000_000},
             capture=False,
         ).content
+        self.work_dir.mkdir(parents=True, exist_ok=True)
         path = self.work_dir / "captcha.png"
         path.write_bytes(image)
         try:
@@ -98,8 +117,10 @@ class AuthenticatedSession:
         discovered, redirect_path, redirect_query = _host_from_multi_region(value)
         if redirect_path != "/unisess/v1/auth":
             raise AuthenticationError("unexpected FusionSolar session redirect path")
-
-        target_host = discovered or self.login_host
+        try:
+            target_host = normalize_host(discovered or self.login_host)
+        except ValueError as exc:
+            raise AuthenticationError("FusionSolar session redirect targeted an invalid host") from exc
         response = self.transport.request(
             "GET",
             f"https://{target_host}{redirect_path}",
@@ -107,21 +128,31 @@ class AuthenticatedSession:
             params=redirect_query,
             capture=False,
         )
-
         location = response.headers.get("Location") or ""
         location_host = urlparse(location).hostname
         candidate = location_host or discovered
-        if candidate:
+        if not candidate:
+            raise HostDiscoveryRequired("FusionSolar session redirect did not identify a data host")
+        try:
             candidate = normalize_host(candidate)
-            self.data_host = candidate
+            _login_host_for(candidate)
+        except (ValueError, HostDiscoveryRequired) as exc:
+            raise AuthenticationError(
+                "FusionSolar session redirect targeted an unsupported host"
+            ) from exc
+        self.data_host = candidate
+
+    @staticmethod
+    def _json_object(response, purpose: str) -> dict:
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise AuthenticationError(f"FusionSolar returned non-JSON data for {purpose}") from exc
+        if not isinstance(body, dict):
+            raise AuthenticationError(f"FusionSolar returned an unexpected schema for {purpose}")
+        return body
 
     def login(self) -> None:
-        if self.login_host.split(".", 1)[0] in {"la5", "intl"}:
-            raise HostDiscoveryRequired(
-                "This FusionSolar login region uses a different SSO flow that is not "
-                "enabled in this exporter yet. No credentials were sent to guessed regions."
-            )
-
         try:
             from fusion_solar_py.encryption import encrypt_password, get_secure_random
         except ImportError as exc:
@@ -129,7 +160,7 @@ class AuthenticatedSession:
                 "fusion-solar-py 0.1.2 is required for authentication"
             ) from exc
 
-        service_value = _eu5_service_value()
+        service_value = _service_value()
         self.transport.request(
             "GET",
             f"https://{self.login_host}/unisso/login.action",
@@ -137,36 +168,37 @@ class AuthenticatedSession:
             params={"service": service_value},
             capture=False,
         )
-
         key_response = self.transport.request(
             "GET",
             f"https://{self.login_host}/unisso/pubkey",
             "auth.pubkey",
             capture=False,
         )
-        key = key_response.json()
-        captcha_code: str | None = None
+        key = self._json_object(key_response, "auth.pubkey")
         encrypted = bool(key.get("enableEncrypt"))
+        if encrypted and not key.get("timeStamp"):
+            raise AuthenticationError("FusionSolar encrypted-login response omitted timeStamp")
 
+        captcha_code: str | None = None
         for captcha_round in range(2):
             service_modes = (True, False) if encrypted else (False,)
             last_error = ""
             captcha_required = False
-
             for use_service in service_modes:
                 params: dict[str, object] = {}
                 password = self.password
-
                 if encrypted:
                     path = "/unisso/v3/validateUser.action"
                     purpose = "auth.login-v3"
-                    params = {
-                        "timeStamp": key["timeStamp"],
-                        "nonce": get_secure_random(),
-                    }
+                    params = {"timeStamp": key["timeStamp"], "nonce": get_secure_random()}
                     if use_service:
                         params["service"] = service_value
-                    password = encrypt_password(key_data=key, password=self.password)
+                    try:
+                        password = encrypt_password(key_data=key, password=self.password)
+                    except Exception as exc:
+                        raise AuthenticationError(
+                            "FusionSolar password encryption could not be prepared safely"
+                        ) from exc
                 else:
                     path = "/unisso/v2/validateUser.action"
                     purpose = "auth.login-v2"
@@ -177,7 +209,6 @@ class AuthenticatedSession:
                             "service=/netecowebext/home/index.html#/LOGIN"
                         ),
                     }
-
                 payload = {
                     "organizationName": "",
                     "username": self.username,
@@ -185,7 +216,6 @@ class AuthenticatedSession:
                 }
                 if captcha_code:
                     payload["verifycode"] = captcha_code
-
                 response = self.transport.request(
                     "POST",
                     f"https://{self.login_host}{path}",
@@ -194,42 +224,35 @@ class AuthenticatedSession:
                     json_body=payload,
                     capture=False,
                 )
-                try:
-                    body = response.json()
-                except ValueError as exc:
-                    raise AuthenticationError(
-                        "FusionSolar returned a non-JSON login response"
-                    ) from exc
-
+                body = self._json_object(response, purpose)
                 regions = body.get("respMultiRegionName") or []
+                if regions is not None and not isinstance(regions, list):
+                    raise AuthenticationError("FusionSolar returned malformed multi-region metadata")
                 redirect_value = None
-                if len(regions) > 1:
+                if isinstance(regions, list) and len(regions) > 1:
                     redirect_value = str(regions[1])
                 elif body.get("redirectURL"):
                     redirect_value = str(body["redirectURL"])
-
                 if redirect_value:
                     self._session_redirect(redirect_value)
                     self._validate_data_host()
-                    self.username = ""
-                    self.password = ""
+                    self._clear_credentials()
                     return
-
                 error_code = str(body.get("errorCode") or "")
                 last_error = str(body.get("errorMsg") or "")
                 captcha_required = bool(
                     error_code == "411"
                     or body.get("verifyCodeCreate")
                     or "verification" in last_error.lower()
+                    or "captcha" in last_error.lower()
                 )
                 if captcha_required:
                     break
-
                 if error_code == "406" and use_service:
                     continue
-                if last_error and not use_service:
-                    raise AuthenticationError(f"FusionSolar login failed: {last_error}")
-
+                if error_code or last_error:
+                    message = last_error or f"error code {error_code}"
+                    raise AuthenticationError(f"FusionSolar login failed: {message}")
             if captcha_required and captcha_round == 0:
                 captcha_code = self._captcha()
                 continue
@@ -240,8 +263,10 @@ class AuthenticatedSession:
             if last_error:
                 raise AuthenticationError(f"FusionSolar login failed: {last_error}")
             break
-
         self._validate_data_host()
+        self._clear_credentials()
+
+    def _clear_credentials(self) -> None:
         self.username = ""
         self.password = ""
 
@@ -255,19 +280,22 @@ class AuthenticatedSession:
             )
             if keep_alive.status_code != 200:
                 raise HostDiscoveryRequired("FusionSolar data host validation failed")
-            company = self.transport.request(
+            company_response = self.transport.request(
                 "GET",
-                (f"https://{self.data_host}/rest/neteco/web/organization/v2/company/current"),
+                f"https://{self.data_host}/rest/neteco/web/organization/v2/company/current",
                 "topology.company",
                 params={"_": __import__("time").time_ns() // 1_000_000},
                 capture=False,
-            ).json()
+            )
+            company = self._json_object(company_response, "topology.company")
+        except AuthenticationError:
+            raise
         except Exception as exc:
             raise HostDiscoveryRequired(
-                "Automatic host discovery could not safely validate the data host. "
-                "Re-run with --host using the FusionSolar hostname visible in the browser."
+                "FusionSolar could not safely validate the supplied data host. Re-check the "
+                "hostname shown in the signed-in browser."
             ) from exc
-        data = company.get("data") if isinstance(company, dict) else None
+        data = company.get("data")
         if not isinstance(data, dict) or not data.get("moDn"):
             raise HostDiscoveryRequired("FusionSolar did not return the current company identifier")
         self.company_dn = str(data["moDn"])
