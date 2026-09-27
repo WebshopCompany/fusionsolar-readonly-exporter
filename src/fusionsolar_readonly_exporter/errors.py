@@ -11,4 +11,12 @@ class AuthenticationError(ExporterError):
 
 
 class HostDiscoveryRequired(AuthenticationError):
-    """Automatic safe host discovery could not establish the data host."""
+    """A safe FusionSolar browser/data host is required before authentication."""
+
+
+class UnsupportedRegion(HostDiscoveryRequired):
+    """The supplied FusionSolar host maps to an explicitly unsupported login flow."""
+
+
+class ApiResponseError(ExporterError):
+    """A permitted endpoint returned a response that could not be parsed safely."""
