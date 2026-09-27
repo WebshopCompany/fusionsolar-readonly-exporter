@@ -205,8 +205,6 @@ def _failure_outcome(exc: Exception) -> str:
     if isinstance(exc, ApiResponseError):
         return "parse_schema_failure"
     status = getattr(getattr(exc, "response", None), "status_code", None)
-    if status in {400, 404, 405}:
-        return "unsupported_not_exposed"
     if status in {401, 403}:
         return "authentication_permission_issue"
     if status is not None or exc.__class__.__name__ in {
