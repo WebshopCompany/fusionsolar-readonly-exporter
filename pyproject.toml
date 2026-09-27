@@ -1,28 +1,33 @@
-[tool.poetry]
+[project]
 name = "fusionsolar-readonly-exporter"
 version = "0.1.0"
 description = "Strictly read-only Huawei FusionSolar owner-account telemetry exporter"
-authors = ["WebshopCompany contributors"]
-license = "MIT"
 readme = "README.md"
-packages = [{ include = "fusionsolar_readonly_exporter", from = "src" }]
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+authors = [{ name = "WebshopCompany contributors" }]
+dependencies = [
+  "fusion-solar-py==0.1.2",
+  "requests>=2.32,<3",
+  "pyarrow>=25.0.1,<26",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<3.14"
-fusion-solar-py = "0.1.2"
-requests = ">=2.32,<3"
-pyarrow = ">=25.0.1,<26"
-
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8.3,<9"
-ruff = ">=0.13,<0.14"
-
-[tool.poetry.scripts]
+[project.scripts]
 fusionsolar-export = "fusionsolar_readonly_exporter.cli:main"
 
+[dependency-groups]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.13,<0.14",
+  "pyright>=1.1.405,<2",
+]
+
 [build-system]
-requires = ["poetry-core>=2.0,<3.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fusionsolar_readonly_exporter"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -32,6 +37,14 @@ addopts = "-q"
 target-version = "py311"
 line-length = 100
 
+[tool.pyright]
+pythonVersion = "3.11"
+include = ["src", "tests"]
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+
+[tool.uv]
+required-version = ">=0.12.18,<0.13"
+
 [tool.fusionsolar-readonly-exporter]
-poetry-version = "2.5.1"
 upstream-fusionsolarpy-commit = "3e02b9f5d831673070e0f7ddac7d9db53ca2368b"
