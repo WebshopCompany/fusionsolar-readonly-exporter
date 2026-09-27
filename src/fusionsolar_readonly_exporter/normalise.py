@@ -49,8 +49,10 @@ def history_rows(
                 timestamp, value = point[0], point[1]
             else:
                 continue
+            if timestamp is None:
+                continue
             try:
-                timestamp_ms = int(timestamp)
+                timestamp_ms = int(str(timestamp))
                 if timestamp_ms < 10_000_000_000:
                     timestamp_ms *= 1000
                 utc_value, local_value, _ = local_iso_from_epoch_ms(timestamp_ms)
