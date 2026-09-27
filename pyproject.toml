@@ -10,6 +10,7 @@ dependencies = [
   "fusion-solar-py==0.1.2",
   "requests>=2.32,<3",
   "pyarrow>=25.0.1,<26",
+  "tzdata; sys_platform == 'win32'",
 ]
 
 [project.scripts]
