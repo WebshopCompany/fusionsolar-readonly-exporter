@@ -6,7 +6,7 @@ on:
       - 'action/**'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   resolve:
@@ -19,15 +19,20 @@ jobs:
       - uses: astral-sh/setup-uv@v10.2.0
         with:
           version: '0.12.19'
-      - name: Refresh lock
-        run: uv lock
-      - name: Apply repository formatter
-        run: uv run ruff format tests/test_stage1.py
-      - name: Upload generated repair inputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-repair-inputs
-          path: |
-            uv.lock
-            tests/test_stage1.py
-          if-no-files-found: error
+      - name: Refresh lock and formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/${GITHUB_REF_NAME}" | cut -f1)"
+          test "$remote_head" = "$GITHUB_SHA"
+          uv lock
+          uv run ruff format tests/test_stage1.py
+          actual="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' 'tests/test_stage1.py' 'uv.lock' | sort)"
+          test "$actual" = "$expected"
+          git rm .github/workflows/dependency-refresh-preview.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add uv.lock tests/test_stage1.py
+          git commit -m 'Refresh lock and formatting'
+          git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
