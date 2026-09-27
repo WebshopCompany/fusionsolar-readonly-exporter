@@ -119,10 +119,7 @@ def test_uni_login_requires_and_accepts_dp_session_cookie(monkeypatch, tmp_path)
                     "errorCode": "470",
                     "respMultiRegionName": [
                         "unused",
-                        (
-                            "/unisess/v1/auth"
-                            "?service=%2Fnetecowebext%2Fhome%2Findex.html"
-                        ),
+                        "/unisess/v1/auth?service=%2Fnetecowebext%2Fhome%2Findex.html",
                     ],
                 }
             )
