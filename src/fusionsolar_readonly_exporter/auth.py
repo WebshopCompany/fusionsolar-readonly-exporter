@@ -170,7 +170,7 @@ class AuthenticatedSession:
                 "dp-session"
             )
             if not dp_session:
-                raise AuthenticationError("FusionSolar session redirect did not establish dp-session")
+                raise AuthenticationError(\n                    "FusionSolar session redirect did not establish dp-session"\n                )
 
     @staticmethod
     def _json_object(response, purpose: str) -> dict:
