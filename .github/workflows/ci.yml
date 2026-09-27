@@ -1,39 +1,53 @@
-name: candidate-bootstrap
+name: candidate-ci
 
 on:
   push:
     branches:
-      - 'feature/initial-readonly-exporter'
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  materialise-lock:
+  validate:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: ${{ matrix.python-version }}
       - name: Install uv
         uses: astral-sh/setup-uv@v10.2.0
         with:
           version: '0.12.18'
-      - name: Resolve and verify lock
-        run: |
-          uv lock
-          uv sync --frozen
-      - name: Verify repository formatting
+      - name: Verify lock freshness
+        run: uv lock --check
+      - name: Sync locked environment
+        run: uv sync --frozen
+      - name: Unit, integration and synthetic tests
+        run: uv run pytest
+      - name: Ruff format check
         run: uv run ruff format --check .
-      - name: Commit generated lock
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Pyright
+        run: uv run pyright
+      - name: Public-context and privacy scan
+        run: uv run pytest -q tests/test_public_context_hygiene.py tests/test_secret_hygiene.py
+      - name: Read-only policy validation
+        run: uv run pytest -q tests/test_readonly_policy.py tests/test_transport_retries.py
+      - name: Build package
+        run: uv build
+      - name: Install wheel into clean smoke environment
         run: |
-          git add uv.lock
-          if git diff --cached --quiet; then
-            echo "uv.lock is already committed"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Add uv dependency lock"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          uv venv .wheel-smoke --python ${{ matrix.python-version }}
+          uv pip install --python .wheel-smoke/bin/python dist/*.whl
+      - name: Installed-wheel CLI smoke test
+        run: .wheel-smoke/bin/fusionsolar-export --help
