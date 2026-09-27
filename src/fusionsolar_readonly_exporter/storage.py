@@ -67,8 +67,7 @@ def _write_json_private(path: Path, value: dict[str, Any]) -> None:
 def _redact(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            k: ("<redacted>" if k.lower() in SECRET_KEYS else _redact(v))
-            for k, v in value.items()
+            k: ("<redacted>" if k.lower() in SECRET_KEYS else _redact(v)) for k, v in value.items()
         }
     if isinstance(value, list):
         return [_redact(v) for v in value]
@@ -229,9 +228,7 @@ class RunStore:
             {"resource": resource_key, "day": day.isoformat(), "payload": payload},
         )
 
-    def load_resource_day_checkpoint(
-        self, resource_key: str, day: date
-    ) -> dict[str, Any] | None:
+    def load_resource_day_checkpoint(self, resource_key: str, day: date) -> dict[str, Any] | None:
         path = self._checkpoint_path(resource_key, day)
         if not path.exists():
             return None
@@ -251,9 +248,7 @@ class RunStore:
         self.save_state(state)
         shutil.rmtree(self.root / ".checkpoints", ignore_errors=True)
 
-    def write_table(
-        self, relative_stem: str, rows: list[dict[str, Any]]
-    ) -> tuple[Path, Path]:
+    def write_table(self, relative_stem: str, rows: list[dict[str, Any]]) -> tuple[Path, Path]:
         try:
             import pyarrow as pa
             import pyarrow.parquet as pq
@@ -283,11 +278,7 @@ class RunStore:
             relative = path.relative_to(self.root)
             if ".checkpoints" in relative.parts:
                 continue
-            if (
-                path.is_file()
-                and path.name != "manifest.json"
-                and not path.name.endswith(".zip")
-            ):
+            if path.is_file() and path.name != "manifest.json" and not path.name.endswith(".zip"):
                 files.append(
                     {
                         "path": str(relative),
@@ -305,9 +296,7 @@ class RunStore:
             **extra,
         }
         manifest_path = self.root / "manifest.json"
-        manifest_path.write_text(
-            json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
-        )
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
         _chmod_best_effort(manifest_path, 0o600)
         return manifest
 

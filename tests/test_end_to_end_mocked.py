@@ -283,9 +283,7 @@ def test_interrupted_backfill_reuses_checkpointed_bytes_and_finishes_complete(
     assert "active_run_root" not in resumed_store.state()
     assert not resumed_store.state().get("resource_days")
 
-    telemetry = (resumed_store.root / "normalised" / "telemetry.csv").read_text(
-        encoding="utf-8"
-    )
+    telemetry = (resumed_store.root / "normalised" / "telemetry.csv").read_text(encoding="utf-8")
     assert "2026-01-01" in telemetry
     assert "2026-01-02" in telemetry
     assert "2026-01-03" in telemetry
