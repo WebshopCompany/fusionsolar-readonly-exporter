@@ -24,6 +24,11 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--host", help="FusionSolar browser data host; prompted locally if omitted")
     p.add_argument(
+        "--use-browser-session",
+        action="store_true",
+        help="prompt locally for an existing dp-session cookie instead of username/password",
+    )
+    p.add_argument(
         "--full",
         action="store_true",
         help="ignore incremental watermark and re-probe observed history",
@@ -64,11 +69,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FusionSolar host rejected safely: {exc}")
         return 3
 
-    username = input("FusionSolar username: ").strip()
-    password = getpass.getpass("FusionSolar password: ")
-    if not username or not password:
-        print("Username and password are required locally.")
-        return 2
+    username = ""
+    password = ""
+    session_cookie = ""
+    if args.use_browser_session:
+        session_cookie = getpass.getpass("FusionSolar dp-session cookie (hidden input): ")
+        if not session_cookie:
+            print("A browser session cookie is required locally for this mode.")
+            return 2
+    else:
+        username = input("FusionSolar username: ").strip()
+        password = getpass.getpass("FusionSolar password: ")
+        if not username or not password:
+            print("Username and password are required locally.")
+            return 2
 
     store = RunStore.create(args.output_dir, args.state_dir)
     transport = ReadOnlyTransport(
@@ -87,8 +101,12 @@ def main(argv: list[str] | None = None) -> int:
         work_dir=args.state_dir,
     )
     try:
-        print("Authenticating...")
-        auth.login()
+        if args.use_browser_session:
+            print("Validating existing local browser session...")
+            auth.restore_session_cookie(session_cookie)
+        else:
+            print("Authenticating...")
+            auth.login()
         client = FusionSolarReadClient(auth)
         archive = Exporter(client, store, full=args.full, overlap_days=args.overlap_days).run()
         print(f"Export complete. Private ZIP: {archive}")
@@ -102,3 +120,4 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         password = ""
         username = ""
+        session_cookie = ""
