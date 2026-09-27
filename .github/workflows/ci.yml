@@ -74,6 +74,6 @@ jobs:
       - name: Install wheel into clean smoke environment
         run: |
           uv venv .wheel-smoke --python ${{ matrix.python-version }}
-          uv pip install --python .wheel-smoke/bin/python --no-deps dist/*.whl
+          uv pip install --python .wheel-smoke/bin/python dist/*.whl
       - name: Installed-wheel CLI smoke test
         run: .wheel-smoke/bin/fusionsolar-export --help
