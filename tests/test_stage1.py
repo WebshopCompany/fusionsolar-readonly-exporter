@@ -6,7 +6,9 @@ import fusionsolar_readonly_exporter.stage1 as stage1
 
 
 class FakeAuth:
-    def __init__(self, transport, username, password, data_host, captcha_provider=None, work_dir=None):
+    def __init__(
+        self, transport, username, password, data_host, captcha_provider=None, work_dir=None
+    ):
         self.transport = transport
         self.username = username
         self.password = password
@@ -81,7 +83,9 @@ def test_stage1_success_never_invokes_history_or_full_export(monkeypatch, tmp_pa
     assert "STAGE1_RESULT: PASS" in lines
 
 
-def test_stage1_diagnostics_do_not_expose_ids_credentials_or_telemetry(monkeypatch, tmp_path):
+def test_stage1_diagnostics_do_not_expose_ids_credentials_or_telemetry(
+    monkeypatch, tmp_path
+):
     code, lines = _run(monkeypatch, tmp_path)
     output = "\n".join(lines)
     assert code == 0
@@ -121,7 +125,15 @@ def test_invalid_host_fails_before_transport_or_auth(monkeypatch, tmp_path):
 
 def test_stage1_source_has_no_full_export_or_history_execution_path():
     source = Path(stage1.__file__).read_text(encoding="utf-8")
-    prohibited = ("Exporter(", "Exporter.run", ".history(", "plant_balance(", "--full", "RunStore", "package_zip")
+    prohibited = (
+        "Exporter(",
+        "Exporter.run",
+        ".history(",
+        "plant_balance(",
+        "--full",
+        "RunStore",
+        "package_zip",
+    )
     assert not any(term in source for term in prohibited)
 
 

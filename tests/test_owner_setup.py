@@ -42,5 +42,11 @@ def test_quickstart_separates_stage1_from_historical_export():
 
 def test_ci_exercises_all_three_desktop_families():
     text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    for required in ("ubuntu-latest", "macos-latest", "windows-latest", "./setup.sh", ".\\setup.ps1"):
+    for required in (
+        "ubuntu-latest",
+        "macos-latest",
+        "windows-latest",
+        "./setup.sh",
+        ".\\setup.ps1",
+    ):
         assert required in text

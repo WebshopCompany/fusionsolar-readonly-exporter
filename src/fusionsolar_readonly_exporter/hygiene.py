@@ -42,7 +42,20 @@ _EXCLUDED_PARTS = frozenset(
     }
 )
 _TEXT_SUFFIXES = frozenset(
-    {".py", ".md", ".toml", ".yml", ".yaml", ".json", ".jsonl", ".txt", ".csv", ".lock", ".sh", ".ps1"}
+    {
+        ".py",
+        ".md",
+        ".toml",
+        ".yml",
+        ".yaml",
+        ".json",
+        ".jsonl",
+        ".txt",
+        ".csv",
+        ".lock",
+        ".sh",
+        ".ps1",
+    }
 )
 
 
