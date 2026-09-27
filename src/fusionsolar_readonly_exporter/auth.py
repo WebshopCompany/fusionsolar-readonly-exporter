@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from .errors import AuthenticationError, HostDiscoveryRequired, UnsupportedRegion
 from .readonly_transport import ReadOnlyTransport
@@ -59,6 +59,10 @@ def _eu5_service_value() -> str:
     return _service_value()
 
 
+def _is_uni_host(host: str) -> bool:
+    return normalize_host(host).split(".", 1)[0].startswith("uni")
+
+
 class AuthenticatedSession:
     def __init__(
         self,
@@ -77,12 +81,26 @@ class AuthenticatedSession:
         self.username = username
         self.password = password
         self.data_host = normalize_host(data_host)
+        self.initial_data_host = self.data_host
         self.login_host = _login_host_for(self.data_host)
         self.captcha_provider = captcha_provider
         self.work_dir = work_dir or Path.cwd()
         self.company_dn: str | None = None
+        self.auth_phase = "not-started"
+
+    def _set_auth_phase(self, phase: str) -> None:
+        self.auth_phase = phase
+
+    def _browser_headers(self, *, referer: str) -> dict[str, str]:
+        return {
+            "Accept": "application/json, text/plain, */*",
+            "Origin": f"https://{self.login_host}",
+            "Referer": referer,
+            "X-Requested-With": "XMLHttpRequest",
+        }
 
     def _captcha(self) -> str:
+        self._set_auth_phase("captcha")
         if not self.captcha_provider:
             raise AuthenticationError(
                 "FusionSolar requires a CAPTCHA; no local CAPTCHA provider is configured"
@@ -119,6 +137,7 @@ class AuthenticatedSession:
             path.unlink(missing_ok=True)
 
     def _session_redirect(self, value: str) -> None:
+        self._set_auth_phase("session-redirect")
         discovered, redirect_path, redirect_query = _host_from_multi_region(value)
         if redirect_path != "/unisess/v1/auth":
             raise AuthenticationError("unexpected FusionSolar session redirect path")
@@ -137,9 +156,7 @@ class AuthenticatedSession:
         )
         location = response.headers.get("Location") or ""
         location_host = urlparse(location).hostname
-        candidate = location_host or discovered
-        if not candidate:
-            raise HostDiscoveryRequired("FusionSolar session redirect did not identify a data host")
+        candidate = location_host or discovered or self.data_host
         try:
             candidate = normalize_host(candidate)
             _login_host_for(candidate)
@@ -148,6 +165,12 @@ class AuthenticatedSession:
                 "FusionSolar session redirect targeted an unsupported host"
             ) from exc
         self.data_host = candidate
+        if _is_uni_host(self.initial_data_host):
+            dp_session = response.cookies.get("dp-session") or self.transport.session.cookies.get(
+                "dp-session"
+            )
+            if not dp_session:
+                raise AuthenticationError("FusionSolar session redirect did not establish dp-session")
 
     @staticmethod
     def _json_object(response, purpose: str) -> dict:
@@ -159,6 +182,21 @@ class AuthenticatedSession:
             raise AuthenticationError(f"FusionSolar returned an unexpected schema for {purpose}")
         return body
 
+    def restore_session_cookie(self, dp_session: str) -> None:
+        """Use an owner-supplied existing browser session without persisting the cookie."""
+        cookie = dp_session.strip()
+        if not cookie:
+            raise AuthenticationError("empty FusionSolar browser session cookie")
+        self._set_auth_phase("browser-session")
+        self.transport.session.cookies.set("dp-session", cookie)
+        self.transport.session.cookies.set("locale", "en-us")
+        try:
+            self._validate_data_host()
+        finally:
+            dp_session = ""
+            cookie = ""
+        self._clear_credentials()
+
     def login(self) -> None:
         try:
             from fusion_solar_py.encryption import encrypt_password, get_secure_random
@@ -167,7 +205,10 @@ class AuthenticatedSession:
                 "fusion-solar-py 0.1.2 is required for authentication"
             ) from exc
 
+        self._set_auth_phase("login-page")
         service_value = _service_value()
+        encoded_service = quote(service_value, safe="")
+        login_page_url = f"https://{self.login_host}/unisso/login.action?service={encoded_service}"
         self.transport.request(
             "GET",
             f"https://{self.login_host}/unisso/login.action",
@@ -175,6 +216,8 @@ class AuthenticatedSession:
             params={"service": service_value},
             capture=False,
         )
+
+        self._set_auth_phase("pubkey")
         key_response = self.transport.request(
             "GET",
             f"https://{self.login_host}/unisso/pubkey",
@@ -190,8 +233,10 @@ class AuthenticatedSession:
         for captcha_round in range(2):
             service_modes = (True, False) if encrypted else (False,)
             last_error = ""
+            last_error_code = ""
             captcha_required = False
             for use_service in service_modes:
+                self._set_auth_phase("credential-submit")
                 params: dict[str, object] = {}
                 password = self.password
                 if encrypted:
@@ -220,6 +265,7 @@ class AuthenticatedSession:
                     "organizationName": "",
                     "username": self.username,
                     "password": password,
+                    "multiRegionName": "",
                 }
                 if captcha_code:
                     payload["verifycode"] = captcha_code
@@ -229,6 +275,7 @@ class AuthenticatedSession:
                     purpose,
                     params=params,
                     json_body=payload,
+                    headers=self._browser_headers(referer=login_page_url),
                     capture=False,
                 )
                 body = self._json_object(response, purpose)
@@ -247,20 +294,20 @@ class AuthenticatedSession:
                     self._validate_data_host()
                     self._clear_credentials()
                     return
-                error_code = str(body.get("errorCode") or "")
+                last_error_code = str(body.get("errorCode") or "")
                 last_error = str(body.get("errorMsg") or "")
                 captcha_required = bool(
-                    error_code == "411"
+                    last_error_code == "411"
                     or body.get("verifyCodeCreate")
                     or "verification" in last_error.lower()
                     or "captcha" in last_error.lower()
                 )
                 if captcha_required:
                     break
-                if error_code == "406" and use_service:
+                if use_service:
                     continue
-                if error_code or last_error:
-                    message = last_error or f"error code {error_code}"
+                if last_error_code or last_error:
+                    message = last_error or f"error code {last_error_code}"
                     raise AuthenticationError(f"FusionSolar login failed: {message}")
             if captcha_required and captcha_round == 0:
                 captcha_code = self._captcha()
@@ -269,26 +316,43 @@ class AuthenticatedSession:
                 raise AuthenticationError(
                     "FusionSolar login still requires a CAPTCHA after validation"
                 )
-            if last_error:
-                raise AuthenticationError(f"FusionSolar login failed: {last_error}")
+            if last_error or last_error_code:
+                message = last_error or f"error code {last_error_code}"
+                raise AuthenticationError(f"FusionSolar login failed: {message}")
             break
-        self._validate_data_host()
-        self._clear_credentials()
+        raise AuthenticationError("FusionSolar login response did not establish a session")
 
     def _clear_credentials(self) -> None:
         self.username = ""
         self.password = ""
 
     def _validate_data_host(self) -> None:
+        self._set_auth_phase("session-validation")
         try:
+            alive_response = self.transport.request(
+                "GET",
+                f"https://{self.data_host}/rest/dpcloud/auth/v1/is-session-alive",
+                "session.check",
+                capture=False,
+            )
+            alive = self._json_object(alive_response, "session.check")
+            if alive.get("code") != 0:
+                raise AuthenticationError("FusionSolar browser session is not active")
+
             keep_alive = self.transport.request(
                 "GET",
                 f"https://{self.data_host}/rest/dpcloud/auth/v1/keep-alive",
                 "session.keepalive",
                 capture=False,
             )
-            if keep_alive.status_code != 200:
-                raise HostDiscoveryRequired("FusionSolar data host validation failed")
+            keep_alive_body = self._json_object(keep_alive, "session.keepalive")
+            if keep_alive_body.get("code") not in (None, 0):
+                raise AuthenticationError("FusionSolar keep-alive rejected the session")
+            payload = keep_alive_body.get("payload")
+            if payload:
+                self.transport.session.headers["roarand"] = str(payload)
+
+            self._set_auth_phase("company-discovery")
             company_response = self.transport.request(
                 "GET",
                 f"https://{self.data_host}/rest/neteco/web/organization/v2/company/current",
@@ -308,3 +372,4 @@ class AuthenticatedSession:
         if not isinstance(data, dict) or not data.get("moDn"):
             raise HostDiscoveryRequired("FusionSolar did not return the current company identifier")
         self.company_dn = str(data["moDn"])
+        self._set_auth_phase("complete")
