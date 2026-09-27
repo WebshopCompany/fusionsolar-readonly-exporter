@@ -44,8 +44,10 @@ class ScriptedTransport:
             return FakeResponse({"enableEncrypt": False})
         if purpose == "auth.login-v2":
             return FakeResponse({})
+        if purpose == "session.check":
+            return FakeResponse({"code": 0})
         if purpose == "session.keepalive":
-            return FakeResponse()
+            return FakeResponse({"code": 0})
         if purpose == "topology.company":
             return FakeResponse({"data": {"moDn": "synthetic-company"}})
         raise AssertionError(f"unexpected auth request: {purpose}")
