@@ -19,3 +19,6 @@ captcha*.png
 *.session*
 .env
 .env.*
+
+# Transient Stage-1 CAPTCHA work area; no credentials/session state is persisted.
+.stage1-private/

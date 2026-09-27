@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'feature/**'
+      - 'action/**'
   pull_request:
     branches:
       - main
@@ -51,3 +52,45 @@ jobs:
           uv pip install --python .wheel-smoke/bin/python dist/*.whl
       - name: Installed-wheel CLI smoke test
         run: .wheel-smoke/bin/fusionsolar-export --help
+      - name: Installed-wheel Stage-1 CLI smoke test
+        run: .wheel-smoke/bin/fusionsolar-stage1 --help
+
+  stage1-posix-smoke:
+    name: Stage-1 setup smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install supported uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: '0.12.19'
+      - name: Exercise POSIX owner setup
+        run: ./setup.sh
+      - name: Exercise POSIX Stage-1 launcher
+        run: ./run.sh --help
+
+  stage1-windows-smoke:
+    name: Stage-1 setup smoke (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install supported uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: '0.12.19'
+      - name: Exercise Windows owner setup
+        shell: pwsh
+        run: .\setup.ps1
+      - name: Exercise Windows Stage-1 launcher
+        shell: pwsh
+        run: .\run.ps1 --help

@@ -8,6 +8,11 @@ _CONTROLLED_ROOT_FILES = frozenset(
         ".gitignore",
         "LICENSE",
         "README.md",
+        "QUICKSTART.md",
+        "setup.sh",
+        "setup.ps1",
+        "run.sh",
+        "run.ps1",
         "SECURITY.md",
         "THIRD_PARTY_NOTICES.md",
         "TROUBLESHOOTING.md",
@@ -20,6 +25,7 @@ _EXCLUDED_PARTS = frozenset(
     {
         ".git",
         ".venv",
+        ".stage1-private",
         "build",
         "dist",
         "output",
@@ -36,7 +42,20 @@ _EXCLUDED_PARTS = frozenset(
     }
 )
 _TEXT_SUFFIXES = frozenset(
-    {".py", ".md", ".toml", ".yml", ".yaml", ".json", ".jsonl", ".txt", ".csv", ".lock"}
+    {
+        ".py",
+        ".md",
+        ".toml",
+        ".yml",
+        ".yaml",
+        ".json",
+        ".jsonl",
+        ".txt",
+        ".csv",
+        ".lock",
+        ".sh",
+        ".ps1",
+    }
 )
 
 

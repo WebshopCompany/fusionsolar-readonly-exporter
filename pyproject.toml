@@ -10,10 +10,12 @@ dependencies = [
   "fusion-solar-py==0.1.2",
   "requests>=2.32,<3",
   "pyarrow>=25.0.1,<26",
+  "tzdata; sys_platform == 'win32'",
 ]
 
 [project.scripts]
 fusionsolar-export = "fusionsolar_readonly_exporter.cli:main"
+fusionsolar-stage1 = "fusionsolar_readonly_exporter.stage1:main"
 
 [dependency-groups]
 dev = [
