@@ -39,7 +39,7 @@ line-length = 100
 
 [tool.pyright]
 pythonVersion = "3.11"
-include = ["src", "tests"]
+include = ["src"]
 typeCheckingMode = "basic"
 reportMissingTypeStubs = false
 
