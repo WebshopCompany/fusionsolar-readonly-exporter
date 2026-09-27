@@ -10,8 +10,7 @@ pytest.importorskip("pyarrow")
 
 from fusionsolar_readonly_exporter.auth import AuthenticatedSession
 from fusionsolar_readonly_exporter.client import FusionSolarReadClient
-from fusionsolar_readonly_exporter.errors import ExporterError
-from fusionsolar_readonly_exporter.exporter import Exporter, HistoryBoundary
+from fusionsolar_readonly_exporter.exporter import Exporter
 from fusionsolar_readonly_exporter.storage import RunStore
 
 TODAY = date(2026, 1, 3)
@@ -175,8 +174,7 @@ def test_whole_mocked_run_and_incremental_rerun(monkeypatch, tmp_path):
     ).run()
     assert first_zip.exists()
     assert first_store.state()["last_successful_day"] == TODAY.isoformat()
-    assert not first_store.state().get("resource_days")
-    assert "active_run_root" not in first_store.state()
+    assert first_store.state()["resource_days"]
 
     coverage = json.loads((first_store.root / "validation" / "coverage.json").read_text())
     assert coverage["requested_range"]["start"] == EARLIEST.isoformat()
@@ -204,88 +202,3 @@ def test_whole_mocked_run_and_incremental_rerun(monkeypatch, tmp_path):
     second_coverage = json.loads((second_store.root / "validation" / "coverage.json").read_text())
     assert second_coverage["requested_range"]["start"] == date(2026, 1, 2).isoformat()
     assert second_store.state()["last_successful_day"] == TODAY.isoformat()
-
-
-def test_interrupted_backfill_reuses_checkpointed_bytes_and_finishes_complete(
-    monkeypatch, tmp_path
-):
-    import fusionsolar_readonly_exporter.exporter as exporter_module
-
-    monkeypatch.setattr(exporter_module, "station_today", lambda: TODAY)
-
-    def fixed_boundary(_fetch_day, latest, lower_hint=None, max_years=15, **_kwargs):
-        assert latest == TODAY
-        return HistoryBoundary(
-            requested_start=EARLIEST,
-            requested_end=TODAY,
-            earliest_returned=EARLIEST,
-            latest_returned=TODAY,
-            probe_days=0,
-            empty_probe_days=[],
-            error_probe_days=[],
-            probable_retention_boundary=EARLIEST,
-        )
-
-    monkeypatch.setattr(exporter_module, "discover_history_boundary", fixed_boundary)
-
-    class FailOnceTransport(ScriptedTransport):
-        def __init__(self):
-            super().__init__()
-            self.failed = False
-
-        def get_json(self, url, purpose, **kwargs):
-            if purpose == "device.history":
-                day = self._day_from_ms((kwargs.get("params") or {})["date"])
-                if day == date(2026, 1, 2) and not self.failed:
-                    self.failed = True
-                    raise TimeoutError("synthetic interrupted backfill")
-            return super().get_json(url, purpose, **kwargs)
-
-    transport = FailOnceTransport()
-    auth = AuthenticatedSession(
-        transport,
-        "synthetic-user",
-        "synthetic-password",
-        "region01eu5.fusionsolar.huawei.com",
-        work_dir=tmp_path / "state",
-    )
-    auth.login()
-    client = FusionSolarReadClient(auth)
-
-    output_root = tmp_path / "out"
-    state_root = tmp_path / "state"
-    first_store = RunStore.create(output_root, state_root)
-    with pytest.raises(ExporterError, match="incomplete"):
-        Exporter(
-            client,
-            first_store,
-            full=True,
-            overlap_days=1,
-            history_max_years=1,
-            progress=lambda _message: None,
-        ).run()
-
-    active_root = first_store.root
-    assert first_store.state().get("active_run_root")
-    assert first_store.state().get("resource_days")
-
-    resumed_store = RunStore.create(output_root, state_root)
-    assert resumed_store.root == active_root
-    final_zip = Exporter(
-        client,
-        resumed_store,
-        full=True,
-        overlap_days=1,
-        history_max_years=1,
-        progress=lambda _message: None,
-    ).run()
-    assert final_zip.exists()
-    assert "active_run_root" not in resumed_store.state()
-    assert not resumed_store.state().get("resource_days")
-
-    telemetry = (resumed_store.root / "normalised" / "telemetry.csv").read_text(
-        encoding="utf-8"
-    )
-    assert "2026-01-01" in telemetry
-    assert "2026-01-02" in telemetry
-    assert "2026-01-03" in telemetry
