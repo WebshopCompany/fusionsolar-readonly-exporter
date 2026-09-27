@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# All owner telemetry/runtime state is private and local only.
+output/
+state/
+raw/
+normalised/
+derived/
+validation/
+*.zip
+captcha*.png
+*.session*
+.env
+.env.*

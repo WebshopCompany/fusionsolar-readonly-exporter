@@ -1,0 +1,33 @@
+name: candidate-ci
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Poetry
+        run: pipx install poetry==2.5.1
+      - name: Verify dependency lock
+        run: poetry check --lock
+      - name: Install locked environment
+        run: poetry install
+      - name: Unit and synthetic tests
+        run: poetry run pytest -q
+      - name: Ruff format check
+        run: poetry run ruff format --check .
+      - name: Ruff lint
+        run: poetry run ruff check .

@@ -1,0 +1,37 @@
+[tool.poetry]
+name = "fusionsolar-readonly-exporter"
+version = "0.1.0"
+description = "Strictly read-only Huawei FusionSolar owner-account telemetry exporter"
+authors = ["WebshopCompany contributors"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "fusionsolar_readonly_exporter", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.14"
+fusion-solar-py = "0.1.2"
+requests = ">=2.32,<3"
+pyarrow = ">=25.0.1,<26"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3,<9"
+ruff = ">=0.13,<0.14"
+
+[tool.poetry.scripts]
+fusionsolar-export = "fusionsolar_readonly_exporter.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0,<3.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.fusionsolar-readonly-exporter]
+poetry-version = "2.5.1"
+upstream-fusionsolarpy-commit = "3e02b9f5d831673070e0f7ddac7d9db53ca2368b"
