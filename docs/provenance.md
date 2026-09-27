@@ -10,4 +10,4 @@ Vendor-reported SOH, alarms, status, temperature and similar diagnostics remain 
 
 ## Reproducible dependency baseline
 
-The package pins `fusion-solar-py==0.1.2` and records the inspected upstream commit `3e02b9f5d831673070e0f7ddac7d9db53ca2368b`. The dependency lock is generated with Poetry 2.5.1 and committed with the release candidate.
+The package pins `fusion-solar-py==0.1.2` and records the inspected upstream commit `3e02b9f5d831673070e0f7ddac7d9db53ca2368b`. Dependencies and development tools are resolved in `uv.lock`; `uv sync --frozen` treats that lockfile as the reproducibility source and fails if it is missing.
