@@ -51,7 +51,6 @@ def test_probe_errors_are_distinct_from_empty_days():
     assert fail_day not in boundary.empty_probe_days
 
 
-
 def test_session_expiry_is_not_misclassified_as_history_gap():
     def fetch(_day):
         raise SessionExpired("synthetic expired session")

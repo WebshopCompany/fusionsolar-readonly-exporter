@@ -207,8 +207,7 @@ def test_whole_mocked_run_and_incremental_rerun(monkeypatch, tmp_path):
 
 
 def test_interrupted_backfill_reuses_checkpointed_bytes_and_finishes_complete(
-    monkeypatch,
-    tmp_path,
+    monkeypatch, tmp_path
 ):
     import fusionsolar_readonly_exporter.exporter as exporter_module
 
