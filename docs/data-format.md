@@ -15,4 +15,4 @@ A timestamped run directory contains:
 
 Normalised telemetry records preserve `source_endpoint`, pseudonymous device, device class, Huawei
 `signal_id`, Huawei/source label, source unit, raw value, UTC timestamp, Europe/London local timestamp,
-raw-response hash and semantic status.
+raw-response hash and semantic status. Normalised `raw_value` is a stable textual representation of the source scalar; the hashed raw response remains the lossless source custody.
