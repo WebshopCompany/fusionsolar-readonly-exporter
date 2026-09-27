@@ -69,7 +69,9 @@ def _base_responses(login_responses, *, redirect_response=None):
             )
         ],
         "session.check": [FakeResponse({"code": 0})],
-        "session.keepalive": [FakeResponse({"code": 0, "payload": "synthetic-roarand"})],
+        "session.keepalive": [
+            FakeResponse({"code": 0, "payload": "synthetic-roarand"})
+        ],
         "topology.company": [FakeResponse({"data": {"moDn": "synthetic-company"}})],
     }
 
@@ -257,7 +259,11 @@ def test_captcha_failure_is_reported_and_file_removed(monkeypatch, tmp_path):
 def test_unexpected_session_redirect_path_fails_closed(monkeypatch, tmp_path):
     _patch_encryption(monkeypatch)
     responses = _base_responses(
-        [FakeResponse({"redirectURL": "https://region01eu5.fusionsolar.huawei.com/unexpected"})]
+        [
+            FakeResponse(
+                {"redirectURL": "https://region01eu5.fusionsolar.huawei.com/unexpected"}
+            )
+        ]
     )
     auth = AuthenticatedSession(
         FakeTransport(responses),
