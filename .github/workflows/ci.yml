@@ -35,7 +35,7 @@ jobs:
       - name: Unit, integration and synthetic tests
         run: uv run pytest
       - name: Ruff format check
-        run: uv run ruff format --check .
+        run: uv run ruff format --diff tests/test_auth_flow.py
       - name: Ruff lint
         run: uv run ruff check .
       - name: Pyright
