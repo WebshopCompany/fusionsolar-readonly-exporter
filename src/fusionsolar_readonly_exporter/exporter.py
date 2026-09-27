@@ -104,6 +104,8 @@ def discover_history_boundary(
             return outcomes[day]
         try:
             outcomes[day] = _history_has_data(fetch_day(day))
+        except (AuthenticationError, ReadOnlyPolicyViolation):
+            raise
         except Exception:
             outcomes[day] = None
         return outcomes[day]

@@ -1,5 +1,8 @@
 from datetime import date, timedelta
 
+import pytest
+
+from fusionsolar_readonly_exporter.errors import SessionExpired
 from fusionsolar_readonly_exporter.exporter import discover_earliest, discover_history_boundary
 
 
@@ -46,3 +49,12 @@ def test_probe_errors_are_distinct_from_empty_days():
     boundary = discover_history_boundary(fetch, latest, max_years=1)
     assert fail_day in boundary.error_probe_days
     assert fail_day not in boundary.empty_probe_days
+
+
+
+def test_session_expiry_is_not_misclassified_as_history_gap():
+    def fetch(_day):
+        raise SessionExpired("synthetic expired session")
+
+    with pytest.raises(SessionExpired):
+        discover_history_boundary(fetch, date(2026, 1, 15), max_years=1)

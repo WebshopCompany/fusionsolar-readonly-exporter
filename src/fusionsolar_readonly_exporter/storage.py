@@ -167,7 +167,9 @@ class RunStore:
             "body_file": body_path.name,
         }
         env_path = self.root / "raw" / f"{stem}.envelope.json"
-        env_path.write_text(json.dumps(envelope, indent=2, sort_keys=True), encoding="utf-8")
+        env_path.write_text(
+            json.dumps(envelope, indent=2, sort_keys=True), encoding="utf-8"
+        )
         _chmod_best_effort(env_path, 0o600)
         self.raw_index.append(envelope)
         index_path = self.root / "raw" / "index.jsonl"
@@ -189,7 +191,9 @@ class RunStore:
             salt_hex = secrets.token_hex(32)
             state["pseudonym_salt"] = salt_hex
             self.save_state(state)
-        digest = hmac.new(bytes.fromhex(str(salt_hex)), raw_id.encode(), hashlib.sha256).hexdigest()
+        digest = hmac.new(
+            bytes.fromhex(str(salt_hex)), raw_id.encode(), hashlib.sha256
+        ).hexdigest()
         return "dev-" + digest[:16]
 
     def resource_day_complete(self, resource_key: str, day: date) -> bool:
@@ -258,7 +262,9 @@ class RunStore:
             import pyarrow as pa
             import pyarrow.parquet as pq
         except ImportError as exc:
-            raise RuntimeError("pyarrow is required to create the mandated Parquet export") from exc
+            raise RuntimeError(
+                "pyarrow is required to create the mandated Parquet export"
+            ) from exc
 
         csv_path = self.root / f"{relative_stem}.csv"
         pq_path = self.root / f"{relative_stem}.parquet"
@@ -322,7 +328,9 @@ class RunStore:
     def package_zip(self) -> Path:
         self.secure_tree()
         zip_path = self.root.with_suffix(".zip")
-        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(
+            zip_path, "w", compression=zipfile.ZIP_DEFLATED
+        ) as archive:
             for path in sorted(self.root.rglob("*")):
                 relative = path.relative_to(self.root)
                 if ".checkpoints" in relative.parts:
