@@ -8,9 +8,9 @@ from fusionsolar_readonly_exporter.storage import RunStore
 def test_incremental_overlap():
     state = {"last_successful_day": "2026-01-10"}
     assert start_for_run(state, date(2026, 1, 1), full=False, overlap_days=2) == date(2026, 1, 8)
-    assert refresh_from_for_run(
-        state, date(2026, 1, 1), full=False, overlap_days=2
-    ) == date(2026, 1, 8)
+    assert refresh_from_for_run(state, date(2026, 1, 1), full=False, overlap_days=2) == date(
+        2026, 1, 8
+    )
     assert start_for_run(state, date(2026, 1, 1), full=True, overlap_days=2) == date(2026, 1, 1)
     assert refresh_from_for_run(state, date(2026, 1, 1), full=True, overlap_days=2) is None
 
