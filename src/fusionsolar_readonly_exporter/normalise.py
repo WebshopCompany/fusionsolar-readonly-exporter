@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+import json
 from typing import Any
 
 from .signals import COMMUNITY_LABELS, semantic_status
 from .timeutil import local_iso_from_epoch_ms, local_naive_series_to_utc
+
+
+
+def _raw_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
 def _signals_data(payload: dict[str, Any]) -> dict[str, Any]:
@@ -57,7 +67,7 @@ def history_rows(
                     "signal_id": str(signal_id),
                     "source_label": label,
                     "source_unit": unit,
-                    "raw_value": value,
+                    "raw_value": _raw_value(value),
                     "semantic_status": semantic_status(str(signal_id), label),
                     "raw_response_sha256": raw_sha256,
                 }
@@ -106,7 +116,7 @@ def plant_balance_rows(
                         "signal_id": key,
                         "source_label": key,
                         "source_unit": None,
-                        "raw_value": raw_value,
+                        "raw_value": _raw_value(raw_value),
                         "semantic_status": "SOURCE_LABEL_ONLY",
                         "raw_response_sha256": raw_sha256,
                     }
@@ -118,7 +128,7 @@ def plant_balance_rows(
                     "device_pseudonym": device_pseudonym,
                     "source_endpoint": "plant.balance",
                     "field": key,
-                    "raw_value": value,
+                    "raw_value": _raw_value(value),
                     "semantic_status": "SOURCE_LABEL_ONLY",
                     "raw_response_sha256": raw_sha256,
                 }
@@ -190,7 +200,7 @@ def realtime_rows(
                 "signal_id": signal_id,
                 "source_label": label,
                 "source_unit": signal.get("unit"),
-                "raw_value": value,
+                "raw_value": _raw_value(value),
                 "semantic_status": semantic_status(signal_id, label),
                 "raw_response_sha256": raw_sha256,
             }
