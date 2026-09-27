@@ -206,8 +206,9 @@ def test_whole_mocked_run_and_incremental_rerun(monkeypatch, tmp_path):
     assert second_store.state()["last_successful_day"] == TODAY.isoformat()
 
 
-
-def test_interrupted_backfill_reuses_checkpointed_bytes_and_finishes_complete(monkeypatch, tmp_path):
+def test_interrupted_backfill_reuses_checkpointed_bytes_and_finishes_complete(
+    monkeypatch, tmp_path
+):
     import fusionsolar_readonly_exporter.exporter as exporter_module
 
     monkeypatch.setattr(exporter_module, "station_today", lambda: TODAY)
@@ -282,7 +283,9 @@ def test_interrupted_backfill_reuses_checkpointed_bytes_and_finishes_complete(mo
     assert "active_run_root" not in resumed_store.state()
     assert not resumed_store.state().get("resource_days")
 
-    telemetry = (resumed_store.root / "normalised" / "telemetry.csv").read_text(encoding="utf-8")
+    telemetry = (resumed_store.root / "normalised" / "telemetry.csv").read_text(
+        encoding="utf-8"
+    )
     assert "2026-01-01" in telemetry
     assert "2026-01-02" in telemetry
     assert "2026-01-03" in telemetry

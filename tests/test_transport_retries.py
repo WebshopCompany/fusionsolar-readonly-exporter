@@ -115,7 +115,6 @@ def test_login_post_is_not_automatically_retried():
     assert len(calls) == 1
 
 
-
 def test_unauthorised_data_request_stops_without_retry_for_safe_resume():
     transport = ReadOnlyTransport(delay_seconds=0, max_retries=3, sleep=lambda _seconds: None)
     calls = []
