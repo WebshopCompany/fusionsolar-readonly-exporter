@@ -83,9 +83,7 @@ def test_stage1_success_never_invokes_history_or_full_export(monkeypatch, tmp_pa
     assert "STAGE1_RESULT: PASS" in lines
 
 
-def test_stage1_diagnostics_do_not_expose_ids_credentials_or_telemetry(
-    monkeypatch, tmp_path
-):
+def test_stage1_diagnostics_do_not_expose_ids_credentials_or_telemetry(monkeypatch, tmp_path):
     code, lines = _run(monkeypatch, tmp_path)
     output = "\n".join(lines)
     assert code == 0
